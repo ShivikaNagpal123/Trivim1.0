@@ -6,7 +6,25 @@ import shutil
 
 def crop_image(image,mask,database,filename,main_directory):
     pic_name=filename[:filename.find("_")]
-    print "pic_name ",pic_name
+    #pic_name=filename
+    #print "pic_name ",pic_name
+    print "main_directory", main_directory
+    print "current directory", os.getcwd()
+    home=os.getcwd()
+    path= os.path.normpath(os.getcwd() + os.sep + os.pardir)
+    #index = len(path)-1
+    os.chdir(path)
+    print "new current directory", os.getcwd()
+    ds=os.listdir(path)
+    for i in ds:
+        if i.endswith(".kml"):
+            oldname=i
+    print "oldname", oldname
+    newname=pic_name+".kml"
+    print "newname", newname
+    os.rename(oldname,newname)
+    print "sucessfully renamed"
+    os.chdir(home)
     cropBox = (mask[0],mask[1],mask[2],mask[3])
     print image
     image1=Image.open(image)
