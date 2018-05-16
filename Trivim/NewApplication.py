@@ -5,20 +5,19 @@ import os
 import urlparse
 import numpy as np
 from os.path import expanduser
-import sys
 home = expanduser("~")
-if getattr(sys, 'frozen', False):
-    # frozen
-    wrk_drr = os.path.dirname(sys.executable)
-else:
-    wrk_drr=os.path.dirname(os.path.realpath(__file__))
-os.chdir(wrk_drr)
+wrk_drr=os.getcwd()
 try:
     with open(os.path.join(home,"Trivim.txt"),'w')as f:
         f.write(wrk_drr)
 except:
     print "error"
 import georef
+import calibrate
+from PIL import Image
+from PIL.ExifTags import TAGS
+import sys
+from math import *  
 import GeoImageCoor
 import transimage
 import transformations
@@ -49,7 +48,7 @@ import RunBundler
 import RunCMVS
 import sqlite3
 import shutil
-#import RunPMVS
+import RunPMVS
 import thread
 import threading
 import addPlacemark_new
@@ -61,13 +60,15 @@ import Segmentation as seg
 from PIL import Image
 ##import canny_main
 import zipfile
-import GUI
+import new
 import LoadKML
 import mask
 from PyQt4 import QtGui, QtCore
 from PyQt4.QtGui import QApplication
 import sys
 import testpycollada
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 
 print "application starting"
 image_file=""
@@ -79,6 +80,7 @@ cameraCalib=cam_calib.Ui_Dialog()
 threeD=threeD_model_gen.Ui_Dialog()
 Point_param=Point_cloud_generation.Ui_Dialog()
 field_param=Field_Planning.Ui_Dialog()
+crop_details=new.Ui_Dialog()
 Height_param=Height_Extraction.Ui_Dialog()
 Database_param=Database_query.Ui_Dialog()
 seg_param=seg_n_mask1.Ui_Dialog()
@@ -229,6 +231,7 @@ def loadProjClicked():
             enableButtonsLoad()# check previous status of the project and enable buttons accordingly
         else:
             print "Project Not Chosen"
+         
         return True
     
 def browseClicked(): # browseClicked in chessboard
@@ -245,21 +248,23 @@ def browseClicked(): # browseClicked in chessboard
     except:
         print "no image directory choosen"
         return False
-    os.chdir(path_calib)
-    fi_name= glob("*.JPG")
-    try:
-        graypath= os.path.join(projPath,"gry")
-        os.makedirs(graypath)
-        print "directory created"
-        for fi in fi_name:
-            print fi
-            img = Image.open(fi).convert("L")
-            print "image converted"
-            img.save(os.path.join(graypath,fi))
-            print "file saved"
-        path_calib = graypath
-    except:
-        print("Can not convert to gray")
+    #os.chdir(path_calib)
+    #fi_name= glob("*.JPG")
+    #try:
+        #graypath= os.path.join(projPath,"gry")
+        #os.makedirs(graypath)
+        #print "directory created"
+        #for fi in fi_name:
+            #print fi
+            #img = Image.open(fi)
+            #img = Image.open(fi).convert("L")
+            #print "image converted"
+            #img.save(os.path.join(graypath,fi))
+            #img.save(os.path.join(graypath,fi))
+            #print "file saved"
+        #path_calib = graypath
+    #except:
+        #print("Can not convert to gray")
     
 def checkGeotag():
         os.chdir(projPath)
@@ -297,11 +302,16 @@ def browseClickHeight():
     Height_param.plainTextEdit.setPlainText(path_point)
     Height_param.pushButton_2.setEnabled(True)
     return True
+	
 def guiCall():
     print "gui"
-    GUI.main()
-    
-    mask= np.genfromtxt(os.path.join(projPath,'mask.txt'),'float')
+    call=QtGui.QDialog()
+    crop_details.setupUi(call)
+    call.exec_()
+
+	
+    mask1= os.path.join(projPath,'mask.txt')
+    mask= np.genfromtxt(mask1,'float')
     print mask
    
     main_directory= os.path.join(projPath,"input")
@@ -332,12 +342,9 @@ def ShowImageSegNMask():
         image_file = str(seg_param.comboBox.currentText())
         print "image_file",image_file
         label2 = seg_param.label_2
-        pixmap = QPixmap(image_file)
-        print "width is", label2.width(), label2.height()
-        pixmap1 = pixmap.scaled(int(label2.width()),int(label2.height()),QtCore.Qt.KeepAspectRatio)
-        print "pixmap scaled"
+        pixmap = QPixmap(image_file);
+        pixmap1 = pixmap.scaled(label2.size(),QtCore.Qt.KeepAspectRatio);
         label2.setPixmap(pixmap1)
-        print "label is set"
         seg_param.pushButton_4.setEnabled(True)
         return True
             
@@ -466,47 +473,31 @@ def calculateParameterClicked():
         return True
 
 
+def sen(d):
+    HFOV=53.0
+    a=tan((0.5*HFOV)/57.296)
+    b=float(d)*a
+    sensorWidth=2.0*b
+    ccd=sensorWidth
+    print ccd
+    return ccd
 
 def OnCalcNumPhotos():
-        f=open(os.path.join(wrk_drr,r'camera_calibration\calib_temp.txt'),'r')
-##        numerator=int(field_param.plainTextEdit.toPlainText())
-##        denominator=int(field_param.plainTextEdit_2.toPlainText())
-        
-        for i in range(2):
-            a=f.readline()
-        try:
-            b=a.split(' ')
-            ccd=float(b[3])
-        except:
-            print("provide senser width")
-           # win32api.MessageBox("Sensor width could not be obtained. Make sure to calculate or load camera parameters before proceeding further.")
-
-        for i in range(7):
-            a=f.readline()
-
-        try:
-            b=a.split(' ')
-            focalLength=float(b[3])
-        except:
-            print("provide focal length")
-            #win32api.MessageBox("Focal length could not be obtained. Make sure to calculate or load camera parameters before proceeding further.")
-        numerator=  (float(field_param.plainTextEdit.toPlainText())*focalLength)/( ccd*float(field_param.plainTextEdit_2.toPlainText()) )
-        denominator=(1-float(field_param.comboBox.currentText())/100)
-##        if int(field_param.plainTextEdit.toPlainText())==0 or int(field_param.plainTextEdit_2.toPlainText())==0:
-##            #win32api.MessageBox('Path Length and Distance from building should be positive','Error')
-##            numerator=  (float(field_param.plainTextEdit.toPlainText())*focalLength)/( ccd*float(field_param.plainTextEdit_2.toPlainText()) )
-##            denominator=(1-float(field_param.comboBox.currentText())/100)
-        if (numerator-1)/denominator >= 0:
-            number=float( (numerator-1)/denominator+1 )
-            field_param.plainTextEdit_5.setPlainText( str(int(number)) )
-            time=int(float(field_param.plainTextEdit_4.toPlainText())*float(number))
-            hours=int(time/3600)
-            minutes=int( (time-hours*3600)/60 )
-            seconds=int( time-minutes*60-hours*3600 )
-            field_param.plainTextEdit_6.setPlainText( str(hours)+"h:"+str(minutes)+"m:"+str(seconds)+"s" )
-        else:
-            field_param.plainTextEdit_5.setPlainText(str(1))
-        
+    d=calibrate.getExif()
+    g=sen(d)
+    numerator=(float(field_param.plainTextEdit.toPlainText())*float(d))/( float(g)*float(field_param.plainTextEdit_2.toPlainText()) )
+    denominator=(1-float(field_param.comboBox.currentText())/100)
+    if (numerator-1)/denominator >= 0:
+        number=float( (numerator-1)/denominator+1 )
+        field_param.plainTextEdit_5.setPlainText( str(int(number)) )
+        time=int(float(field_param.plainTextEdit_4.toPlainText())*float(number))
+        hours=int(time/3600)
+        minutes=int( (time-hours*3600)/60 )
+        seconds=int( time-minutes*60-hours*3600 )
+        field_param.plainTextEdit_6.setPlainText( str(hours)+"h:"+str(minutes)+"m:"+str(seconds)+"s" )
+    else:
+        field_param.plainTextEdit_5.setPlainText(str(1))
+		
 def RepresentsInt(s):
         try: 
             float(s)
@@ -579,6 +570,8 @@ def browseKMLClicked():
     dialog.exec_()
     kmlPath= dialog.selectedFiles()[0]
     building= os.path.basename(str(kmlPath)).split(".")[0]
+    #building=building[:building.find("_")]
+    print "building", building
     testpath=os.path.join(projPath,"input")+"\\"+building
     os.chdir(testpath)
     try:
@@ -600,6 +593,7 @@ def browseCoordinates():
     return str(coordPath)
 def loadKMLClicked():
     buildFolderCheck=os.listdir(os.path.join(projPath,"input"))
+    print "buildFolderCheck", buildFolderCheck
     numBuild=len(buildFolderCheck)
     print "Number of Buildings =",numBuild
     call=QtGui.QDialog()
@@ -890,15 +884,16 @@ def OnProceedButton():##segmentation
         global seg_image
         seg_image= os.path.join(wrk_drr,'pic_resize.jpg')
         shutil.copy(image_file,seg_image)
-        
+        #img = mpimg.imread(image_file)
+        #imgplot = plt.imshow(img)
+        #plt.show()
         call=QtGui.QDialog()
         segtest.setupUi(call)
-        
         segtest.pushButton.setEnabled(True)
-        
         call.connect(segtest.pushButton,QtCore.SIGNAL("clicked()"),guiCall)
-        
         call.exec_()
+        
+		
         
             
 def dQueryClicked():
@@ -972,7 +967,7 @@ def helpClicked():
     return True
 def aboutClicked():
     print "aboutClicked"
-    msg=str("Trivim 1.0\n\nTrivim (alpha) is an open source application for generating 3D-Street Model. The application generates photorealistic georeferenced 3D Street Model using photogrammetric processing of overlapping 2D images.\n\nTechnical Advisors: Dr. Y.V.N.Krishnamurthy, Mr. P.L.N. Raju, Ms. Shefali Agrawal\n\nTeam: Dr. Poonam S Tiwari, Dr. Hina Pande, Mr. S. Raghavendra, Mr. K. Shiva Reddy,\n           Mr. Mayank Sharma, BITS Interns (2013,2014), Ms. Shweta Beniwal\n\n\n� IIRS, 2014")
+    msg=str("Trivim 1.0\n\nTrivim (alpha) is an open source application for generating 3D-Street Model. The application generates photorealistic georeferenced 3D Street Model using photogrammetric processing of overlapping 2D images.\n\nTechnical Advisors: Dr. Y.V.N.Krishnamurthy, Mr. P.L.N. Raju, Ms. Shefali Agrawal\n\nTeam: Dr. Poonam S Tiwari, Dr. Hina Pande, Mr. S. Raghavendra, Mr. K. Shiva Reddy,\n           Mr. Mayank Sharma, BITS Interns (2013,2014), Ms. Shweta Beniwal\n\n\nÂ© IIRS, 2014")
     msgBox=QMessageBox()
     msgBox.setText(msg)
     msgBox.setWindowTitle("About Trivim")
