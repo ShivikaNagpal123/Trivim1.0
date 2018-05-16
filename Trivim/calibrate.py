@@ -9,7 +9,6 @@ from PIL.ExifTags import TAGS
 from os.path import expanduser
 home = expanduser("~")
 
-
 USAGE = '''
 USAGE: calib.py [--save <filename>] [--debug <output path>] [--square_size] [<image mask>]
 '''
@@ -19,9 +18,44 @@ def _getExif(photoHandle):
         if info:
             for attr, value in info.items():
                 decodedAttr = TAGS.get(attr, attr)
-                if decodedAttr in exifAttrs: exif[decodedAttr] = value
+                if decodedAttr in info: exif[decodedAttr] = value
         return exif
-    
+
+
+def getExif():
+    ret = {}
+    trivim_dir= open(os.path.join(home,"Trivim.txt")).readline()
+    count=0
+    os.chdir(trivim_dir)
+    with open('camera_calibration\\value.txt', 'w') as myFile:
+            myFile.write("0")
+    f = open("camera_calibration\\path.txt","r")
+                #Read whole file into data
+    photoDir=f.read()
+    path=photoDir+"\\"
+    for filename in os.listdir(path):
+        if filename.endswith('.JPG'):
+           filename=str(filename)
+           break
+    print filename
+    filename=(path + filename)
+    print filename
+    imgfile=Image.open(filename)
+    print imgfile
+    info = imgfile._getexif()
+    for tag, value in info.items():
+        decoded = TAGS.get(tag, tag)
+        ret[decoded] = value
+        if decoded == 'FocalLength':
+            print value
+            s=str(value)
+            token = s.split(',')
+            temp= token[0]
+            fl=temp.split('(')
+            c=fl[1]
+            print c
+            return c
+
 def run():
     trivim_dir= open(os.path.join(home,"Trivim.txt")).readline()
     count=0
@@ -33,6 +67,8 @@ def run():
     photoDir=f.read()
     path=photoDir+"\\*.jpg"
     print path
+    #d=getExif()
+    #print d
 
     args, img_mask = getopt.getopt(sys.argv[1:], '', ['save=', 'debug=', 'square_size='])
     args = dict(args)
@@ -42,7 +78,7 @@ def run():
     debug_dir = args.get('--debug')
     square_size = float(args.get('--square_size', 1.0))
 
-    pattern_size = (9, 6)
+    pattern_size = (6, 5)
     pattern_points = np.zeros( (np.prod(pattern_size), 3), np.float32 )
     pattern_points[:,:2] = np.indices(pattern_size).T.reshape(-1, 2)
     pattern_points *= square_size
@@ -100,7 +136,9 @@ def run():
             myFile.write("\n"+"Camera Matrix : "+"\n")
             for log in camera_matrix:
                 myFile.write(str(log)+"\n")
-            myFile.write("Focal Length(mm) : Not Calculated\n")
+            #myFile.write("Focal Length(mm) "+ str(d)+"\n")
+            myFile.write("Focal Length(mm) : Calculated\n")
+            
         with open('camera_calibration\\finish.txt', 'w') as myFile:
             myFile.write("finish")
     except:
